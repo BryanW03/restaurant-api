@@ -1,18 +1,48 @@
 const request = require('supertest');
+
+jest.mock('../src/middleware/auth', () => require('./authMock'));
+
+const { __loginAs } = require('../src/middleware/auth');
 const app = require('../src/app');
 const { FAKE_ID, connect, disconnect } = require('./helpers');
 
 beforeAll(connect);
 afterAll(disconnect);
+afterEach(() => __loginAs(null));
 
-// Orders are private data, so without a login the API must answer 401.
-describe('GET /orders (not logged in)', () => {
-  test('GET /orders returns 401', async () => {
+describe('GET /orders', () => {
+  test('1. GET all without login returns 401', async () => {
     const res = await request(app).get('/orders');
     expect(res.statusCode).toBe(401);
   });
 
-  test('GET /orders/:id returns 401', async () => {
+  test('2. GET all as customer returns 200 and an array', async () => {
+    __loginAs('customer');
+    const res = await request(app).get('/orders');
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('3. GET all as admin returns 200 and an array', async () => {
+    __loginAs('admin');
+    const res = await request(app).get('/orders');
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  test('4. GET one with an invalid id returns 400', async () => {
+    __loginAs('admin');
+    const res = await request(app).get('/orders/not-an-id');
+    expect(res.statusCode).toBe(400);
+  });
+
+  test('5. GET one that does not exist returns 404', async () => {
+    __loginAs('admin');
+    const res = await request(app).get(`/orders/${FAKE_ID}`);
+    expect(res.statusCode).toBe(404);
+  });
+
+  test('6. GET one without login returns 401', async () => {
     const res = await request(app).get(`/orders/${FAKE_ID}`);
     expect(res.statusCode).toBe(401);
   });

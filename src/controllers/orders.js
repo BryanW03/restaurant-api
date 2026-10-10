@@ -1,7 +1,7 @@
 const Order = require('../models/Order');
 const MenuItem = require('../models/MenuItem');
 const { isStaff } = require('../middleware/auth');
-const { pick, httpError, asyncHandler } = require('../utils/helpers');
+const { pick, httpError } = require('../utils/helpers');
 
 // Loads menu items, checks they exist and are available, and calculates the total.
 const buildItems = async (items) => {
@@ -26,55 +26,75 @@ const loadOrder = async (id) => {
 
 const ownsOrder = (order, user) => String(order.user) === user.id;
 
-exports.getAll = asyncHandler(async (req, res) => {
-  const filter = isStaff(req.user) ? {} : { user: req.user._id };
-  if (req.query.status) filter.status = req.query.status;
-  const orders = await Order.find(filter).populate('user', 'username displayName').sort('-createdAt');
-  res.status(200).json(orders);
-});
+exports.getAll = async (req, res, next) => {
+  try {
+    const filter = isStaff(req.user) ? {} : { user: req.user._id };
+    if (req.query.status) filter.status = req.query.status;
+    const orders = await Order.find(filter).populate('user', 'username displayName').sort('-createdAt');
+    res.status(200).json(orders);
+  } catch (err) {
+    next(err);
+  }
+};
 
-exports.getOne = asyncHandler(async (req, res) => {
-  const order = await loadOrder(req.params.id);
-  if (!isStaff(req.user) && !ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
-  res.status(200).json(order);
-});
+exports.getOne = async (req, res, next) => {
+  try {
+    const order = await loadOrder(req.params.id);
+    if (!isStaff(req.user) && !ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
+    res.status(200).json(order);
+  } catch (err) {
+    next(err);
+  }
+};
 
-exports.create = asyncHandler(async (req, res) => {
-  const { items, total } = await buildItems(req.body.items);
-  const order = await Order.create({
-    ...pick(req.body, ['orderType', 'tableNumber', 'notes']),
-    user: req.user._id,
-    items,
-    total,
-  });
-  res.status(201).json(order);
-});
+exports.create = async (req, res, next) => {
+  try {
+    const { items, total } = await buildItems(req.body.items);
+    const order = await Order.create({
+      ...pick(req.body, ['orderType', 'tableNumber', 'notes']),
+      user: req.user._id,
+      items,
+      total,
+    });
+    res.status(201).json(order);
+  } catch (err) {
+    next(err);
+  }
+};
 
-exports.update = asyncHandler(async (req, res) => {
-  const order = await loadOrder(req.params.id);
-  const staff = isStaff(req.user);
-  if (!staff && !ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
+exports.update = async (req, res, next) => {
+  try {
+    const order = await loadOrder(req.params.id);
+    const staff = isStaff(req.user);
+    if (!staff && !ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
 
-  if (!staff) {
-    if (order.status !== 'pending') throw httpError(403, 'Only pending orders can be changed');
-    if (req.body.status && req.body.status !== 'cancelled') {
-      throw httpError(403, 'Customers can only cancel their orders');
+    if (!staff) {
+      if (order.status !== 'pending') throw httpError(403, 'Only pending orders can be changed');
+      if (req.body.status && req.body.status !== 'cancelled') {
+        throw httpError(403, 'Customers can only cancel their orders');
+      }
     }
-  }
 
-  const changes = pick(req.body, ['orderType', 'tableNumber', 'notes', 'status']);
-  if (req.body.items) Object.assign(changes, await buildItems(req.body.items));
-  order.set(changes);
-  await order.save();
-  res.status(200).json(order);
-});
-
-exports.remove = asyncHandler(async (req, res) => {
-  const order = await loadOrder(req.params.id);
-  if (!isStaff(req.user)) {
-    if (!ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
-    if (order.status !== 'pending') throw httpError(403, 'Only pending orders can be deleted');
+    const changes = pick(req.body, ['orderType', 'tableNumber', 'notes', 'status']);
+    if (req.body.items) Object.assign(changes, await buildItems(req.body.items));
+    order.set(changes);
+    await order.save();
+    res.status(200).json(order);
+  } catch (err) {
+    next(err);
   }
-  await order.deleteOne();
-  res.status(200).json({ message: 'Order deleted' });
-});
+};
+
+exports.remove = async (req, res, next) => {
+  try {
+    const order = await loadOrder(req.params.id);
+    if (!isStaff(req.user)) {
+      if (!ownsOrder(order, req.user)) throw httpError(403, 'This is not your order');
+      if (order.status !== 'pending') throw httpError(403, 'Only pending orders can be deleted');
+    }
+    await order.deleteOne();
+    res.status(200).json({ message: 'Order deleted' });
+  } catch (err) {
+    next(err);
+  }
+};
